@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>" />
+    <title>FloodConnect – Cứu trợ cộng đồng</title>
+    <!-- Đặt giao diện sáng/tối trước khi tải React để không nháy nền trắng (cùng logic với src/utils/theme.js) -->
+    <script>
+      (function () {
+        var p = 'system';
+        try { p = localStorage.getItem('floodconnect-theme') || 'system'; } catch (e) {}
+        var dark = p === 'dark' || (p !== 'light' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
