@@ -1,0 +1,146 @@
+server:
+  port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+
+spring:
+  application:
+    name: floodconnect-backend
+  config:
+    # Đọc file .env cạnh pom.xml (nếu có) làm biến môi trường. Hai đường dẫn: chạy từ thư mục floodconnect-backend (mvn)
+    # hoặc từ thư mục gốc repo (VS Code mặc định chạy ở đây); thiếu đường dẫn thứ hai thì .env bị bỏ qua và mọi giá trị
+    # quay về mặc định, ví dụ PAYMENT_MOCK=true nên thanh toán thành giả lập dù .env đặt false.
+    import: optional:file:.env[.properties],optional:file:floodconnect-backend/.env[.properties]
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/floodconnect}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Cấu trúc CSDL do Flyway quản lý (db/migration/V*.sql). Hibernate chỉ KIỂM TRA entity khớp CSDL, không tự sửa:
+      # thêm/sửa cột thì viết file migration V<n>__mo_ta.sql mới; quên viết thì ứng dụng báo lỗi ngay lúc khởi động.
+      ddl-auto: ${DDL_AUTO:validate}
+    # Phải nằm dưới spring.jpa (cùng cấp với hibernate ở trên). Từng bị đặt nhầm dưới spring.flyway: Spring bỏ qua không báo lỗi
+    # nên hai cấu hình dưới mất tác dụng (QueryCountIT phát hiện: tài khoản tác giả bị nạp từng người một).
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+        format_sql: false
+        # Quan hệ lazy (người gửi ca, tổ chức phụ trách, tài khoản tổ chức...) của nhiều bản ghi được tải gộp bằng IN (...)
+        # thay vì một truy vấn cho mỗi bản ghi (tránh N+1 khi hiển thị danh sách)
+        default_batch_fetch_size: 100
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # CSDL tạo TRƯỚC khi có Flyway (đã chạy đủ docs/legacy/upgrade-2026-11.sql): chạy MỘT LẦN với FLYWAY_BASELINE=true để Flyway
+    # ghi nhận "đã có V1, V2" mà không chạy lại, rồi tự chạy V3 trở đi. Mặc định false: gặp CSDL có sẵn bảng mà không có lịch sử
+    # Flyway thì báo lỗi rõ ràng thay vì lặng lẽ bỏ qua V1, V2 (vd. CSDL mới nhưng đã tự cài PostGIS trước).
+    baseline-on-migrate: ${FLYWAY_BASELINE:false}
+    baseline-version: 2
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 30MB
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USER:}
+    password: ${MAIL_PASSWORD:}
+    default-encoding: UTF-8
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
+
+app:
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
+  backend-url: ${BACKEND_URL:http://localhost:8080}   # URL mà cổng thanh toán chuyển trình duyệt về (return) / gọi IPN
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:3000}
+  security:
+    trust-proxy: ${TRUST_PROXY:false}   # true chỉ khi chạy sau reverse proxy có ghi X-Forwarded-For (không thì ai cũng giả được IP)
+    auth-rate-limit:                    # giới hạn theo IP mỗi phút cho các API xác thực (AuthRateLimitFilter)
+      enabled: ${AUTH_RATE_LIMIT_ENABLED:true}
+      login-per-minute: 20
+      otp-per-minute: 10                # xác thực email, đặt lại mật khẩu
+      send-per-minute: 5                # quên mật khẩu, gửi lại mã, đăng ký
+  jwt:
+    secret: ${JWT_SECRET:}              # BẮT BUỘC đặt trong .env (chuỗi ngẫu nhiên ≥ 32 byte); thiếu thì ứng dụng không khởi động (JwtService)
+    access-minutes: 30
+    refresh-days: 7
+  seed:
+    enabled: ${SEED_DATA:false}        
+  admin:
+    email: ${ADMIN_EMAIL:admin@floodconnect.vn}
+    phone: ${ADMIN_PHONE:0900000000}
+    password: ${ADMIN_PASSWORD:}        # BẮT BUỘC khi DB chưa có Admin (lần chạy đầu); sau đó đổi mật khẩu trong Trang cá nhân
+  mail:
+    enabled: ${MAIL_ENABLED:false}      # false: chỉ ghi log nội dung email; true: gửi thật qua SMTP
+    from: ${MAIL_FROM:${MAIL_USER:no-reply@floodconnect.vn}}   # mặc định = MAIL_USER (Gmail chỉ cho gửi từ chính tài khoản đó)
+  storage:
+    provider: ${STORAGE_PROVIDER:local}        # local: ghi ra ./uploads | cloudinary: tải lên Cloudinary
+    dir: ${STORAGE_DIR:./uploads}
+    public-url: ${STORAGE_PUBLIC_URL:http://localhost:8080/files}
+    # Giấy tờ pháp lý / CCCD của tổ chức khi lưu cục bộ: thư mục KHÔNG được phục vụ qua web (khác ./uploads). Nhớ sao lưu cả thư mục này.
+    private-dir: ${STORAGE_PRIVATE_DIR:./private-uploads}
+    # true MỘT LẦN: chuyển giấy tờ cũ đang công khai (Cloudinary kiểu upload, /files/org-docs) sang chế độ riêng tư (OrgDocumentMigration)
+    migrate-org-docs: ${MIGRATE_ORG_DOCS:false}
+  cloudinary:                                   # chỉ dùng khi STORAGE_PROVIDER=cloudinary
+    cloud-name: ${CLOUDINARY_CLOUD_NAME:}
+    api-key: ${CLOUDINARY_API_KEY:}
+    api-secret: ${CLOUDINARY_API_SECRET:}
+    folder: ${CLOUDINARY_FOLDER:floodconnect}
+  ai:
+    # Dịch vụ AI chung floodconnect-ai (FastAPI, mặc định http://localhost:8000): POST /v1/assess (PhoBERT + rule engine),
+    # POST /v1/match (matching). Để trống: dùng bộ quy tắc dự phòng trong Java cho cả hai việc.
+    service-url: ${AI_SERVICE_URL:}
+    token: ${AI_TOKEN:}                  # = ADMIN_TOKEN bên dịch vụ AI (header X-API-Token); trống nếu AI chạy chế độ demo
+    timeout-ms: ${AI_TIMEOUT_MS:3000}    # chờ kết nối; chờ đọc = 3 lần số này
+    retry-after-seconds: ${AI_RETRY_AFTER_SECONDS:30}   # AI lỗi: dùng quy tắc dự phòng trong ngần này giây rồi mới thử lại
+    cluster-radius-m: ${AI_CLUSTER_RADIUS_M:1000}       # ca lân cận gửi kèm để AI xét cụm (= NEARBY_RADIUS_METERS bên AI)
+    cluster-window-minutes: ${AI_CLUSTER_WINDOW_MINUTES:360}   # (= NEARBY_TIME_WINDOW_MINUTES bên AI)
+    # Matching qua AI: từ V10 mỗi tổ chức bắt buộc khai báo bán kính hoạt động và số ca xử lý cùng lúc, backend gửi giá trị
+    # riêng đó sang AI. Hai giá trị dưới đây chỉ là dự phòng khi một bản ghi thiếu (vd. dữ liệu nhập tay vào CSDL).
+    org-service-radius-km: ${AI_ORG_SERVICE_RADIUS_KM:35}   # chỉ dùng khi tổ chức thiếu bán kính hoạt động (từ V10 tổ chức tự khai báo)
+    org-default-capacity: ${AI_ORG_DEFAULT_CAPACITY:3}  # chỉ dùng khi tổ chức thiếu số ca xử lý cùng lúc (từ V10 tổ chức tự khai báo)
+  weather:
+    enabled: ${WEATHER_ENABLED:true}     # Open-Meteo. Lỗi mạng/tắt: không có dữ liệu, thời tiết không được dùng để nâng mức ca
+  matching:
+    refusal-window-hours: ${MATCHING_REFUSAL_WINDOW_HOURS:3}   # AI Matching (điểm W): chỉ trừ điểm lần từ chối / không phản hồi trong ngần này giờ gần đây
+  rescue:
+    accepted-reminder-hours: ${ACCEPTED_REMINDER_HOURS:2}   # ca Đã tiếp nhận quá số giờ này chưa hoàn thành: nhắc tổ chức và Admin (một lần)
+    # ca Đã phân công mà tổ chức quá 5 phút không phản hồi: thêm ngần này phút Admin chưa điều phối lại thì ca tự về Chờ xử lý
+    # (báo các tổ chức gần đó). Giao diện đếm ngược theo hằng số ASSIGN_RELEASE_MIN trong frontend (utils/constants.js): đổi ở đây thì đổi cả ở đó
+    assign-release-minutes: ${ASSIGN_RELEASE_MINUTES:10}
+  sos:
+    active-max: ${SOS_ACTIVE_MAX:1000}    # mọi ca đang hoạt động (Điều phối, tab "Tất cả", bản đồ người dân): số ca tối đa mỗi lần tải
+  map:
+    max-markers: ${MAP_MAX_MARKERS:1000}  # bản đồ điều phối của Admin: số ca tối đa mỗi lần tải (ca đang hoạt động trước); vượt thì báo "thu hẹp bộ lọc"
+  payment:
+    mock: ${PAYMENT_MOCK:true}           # true: giả lập (modal) | false: dùng sandbox VNPay thật (hệ thống chỉ nhận ủng hộ qua VNPay)
+    min-amount: ${PAYMENT_MIN_AMOUNT:5000}         # số tiền mỗi lần ủng hộ (VND); mặc định theo giới hạn thường gặp của VNPay,
+    max-amount: ${PAYMENT_MAX_AMOUNT:999999999}    # chưa đối chiếu tài liệu chính thức: thử trên sandbox thấy khác thì sửa ở đây
+    pending-expire-minutes: ${PAYMENT_PENDING_EXPIRE_MINUTES:30}   # giao dịch ủng hộ chưa có kết quả sau ngần này phút → EXPIRED (phải > hạn 15 phút của VNPay)
+    vnpay:                               # đăng ký tại https://sandbox.vnpayment.vn/devreg/ để nhận TmnCode + HashSecret
+      tmn-code: ${VNPAY_TMN_CODE:}
+      hash-secret: ${VNPAY_HASH_SECRET:}
+      pay-url: ${VNPAY_PAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+
+springdoc:                              # tài liệu API (Swagger). Mặc định TẮT: người ngoài không xem được danh sách API
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:false}   # bật khi phát triển/demo: SWAGGER_ENABLED=true trong .env
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:false}
+    path: /swagger-ui.html
+
+logging:
+  charset:
+    console: UTF-8
+  level:
+    vn.floodconnect: INFO

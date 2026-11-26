@@ -1,0 +1,33 @@
+# Cấu hình cho kiểm thử tích hợp (profile "it", các lớp *IT.java, chạy bằng: mvn -Pit verify).
+# Ghi đè trực tiếp các khóa app.* nên giá trị trong .env (mail thật, Cloudinary, VNPay...) không ảnh hưởng tới bài test.
+spring:
+  datasource:
+    # CSDL RIÊNG cho test (docs/create-test-database.sql). Lớp AbstractIT từ chối xóa dữ liệu nếu tên CSDL không kết thúc bằng "_test".
+    url: ${IT_DB_URL:jdbc:postgresql://localhost:5432/floodconnect_test}
+    username: ${IT_DB_USER:postgres}
+    password: ${IT_DB_PASSWORD:postgres}
+  flyway:
+    baseline-on-migrate: false   # CSDL test luôn được Flyway dựng từ đầu (V1, V2, V3...)
+
+app:
+  scheduling:
+    enabled: false               # tác vụ định kỳ không được chạy ngầm sửa dữ liệu giữa một bài test
+  seed:
+    enabled: false
+  mail:
+    enabled: false               # không gửi email thật
+  weather:
+    enabled: false               # không gọi Open-Meteo qua mạng
+  ai:
+    service-url: ""
+  jwt:
+    secret: it-only-jwt-secret-0123456789-abcdefghijklmnopqrstuvwxyz
+  admin:
+    password: ItAdmin2026
+  storage:
+    provider: local
+    dir: target/it-uploads
+    private-dir: target/it-private-uploads
+  security:
+    auth-rate-limit:
+      enabled: false             # giới hạn theo IP có unit test riêng; ở đây nhiều bài test cùng gọi từ một IP
